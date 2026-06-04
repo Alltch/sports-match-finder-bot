@@ -85,6 +85,13 @@ async def get_todays_events(sport: str) -> List[Dict]:
             len(response.text),
         )
 
+        if response.status_code == 403:
+            log.error(
+                "SofaScore rejected the server request: HTTP 403. "
+                "The hosting provider IP may be blocked."
+            )
+            return []
+
         if response.status_code != 200:
             log.error(
                 "SofaScore HTTP error: status=%s body=%s",
