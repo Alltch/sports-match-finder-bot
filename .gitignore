@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Editors and OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs and local debug artifacts
+*.log
+debug_*.py
+*_step*.html
+*_step*.json
+*_responses/
