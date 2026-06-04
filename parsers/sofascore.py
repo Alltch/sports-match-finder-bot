@@ -1,14 +1,22 @@
-import httpx
 import logging
-from datetime import date
-from typing import List, Dict
+from datetime import datetime
+from typing import Dict, List
+from zoneinfo import ZoneInfo
+
+import httpx
+
 
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://api.sofascore.com/api/v1"
+TZ = ZoneInfo("Europe/Berlin")
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
     "Referer": "https://www.sofascore.com/",
     "Accept": "application/json",
 }
@@ -33,7 +41,10 @@ _CYR = {
 
 
 def _to_latin(text: str) -> str:
-    return "".join(_CYR.get(ch, ch) for ch in text.lower())
+    return "".join(
+        _CYR.get(character, character)
+        for character in text.lower()
+    )
 
 
 def _normalize(text: str) -> str:
@@ -42,28 +53,62 @@ def _normalize(text: str) -> str:
     text = text.replace("-", " ")
     text = text.replace(".", " ")
     text = text.replace(",", " ")
-    text = " ".join(text.split())
-    return text
+    return " ".join(text.split())
 
 
 async def get_todays_events(sport: str) -> List[Dict]:
-    slug = SPORT_SLUG.get(sport, "football")
-    today = date.today().strftime("%Y-%m-%d")
+    slug = SPORT_SLUG.get(sport)
 
+    if not slug:
+        log.error("Unknown sport slug: %s", sport)
+        return []
+
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
     url = f"{BASE_URL}/sport/{slug}/scheduled-events/{today}"
 
+    log.info("Requesting SofaScore URL: %s", url)
+
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, headers=HEADERS)
+        async with httpx.AsyncClient(
+            timeout=20.0,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                url,
+                headers=HEADERS,
+            )
+
+        log.info(
+            "SofaScore response: status=%s content_type=%s size=%s",
+            response.status_code,
+            response.headers.get("content-type"),
+            len(response.text),
+        )
 
         if response.status_code != 200:
-            log.warning(f"SofaScore HTTP {response.status_code}: {response.text[:200]}")
+            log.error(
+                "SofaScore HTTP error: status=%s body=%s",
+                response.status_code,
+                response.text[:500],
+            )
             return []
 
-        events = response.json().get("events", [])
-        log.info(f"SofaScore {sport}: {len(events)} events")
+        payload = response.json()
+        events = payload.get("events", [])
+
+        log.info(
+            "SofaScore sport=%s date=%s events=%s",
+            sport,
+            today,
+            len(events),
+        )
+
         return events
 
-    except Exception as e:
-        log.warning(f"SofaScore error: {e}")
+    except httpx.TimeoutException:
+        log.exception("SofaScore timeout for URL: %s", url)
+        return []
+
+    except Exception:
+        log.exception("SofaScore unexpected error for URL: %s", url)
         return []
